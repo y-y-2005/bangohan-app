@@ -1,6 +1,6 @@
 /* ==========================================================================
    「ばんごはん、いる？」 - Core Application Logic & Realtime Multi-Device Sync
-   ※ キャッシュバスティング版 app.v4.js
+   ※ キャッシュバスティング版 app.v5.js (メール機能完全除去版)
    ========================================================================== */
 
 // --- Cloud Sync API Configuration ---
@@ -31,13 +31,13 @@ const INITIAL_STATE = {
     deadline_time: '17:00',
     reminder_time: '15:00'
   },
-  config_ts: 0,          // group / users / defaults / email の最終更新（epoch ms）
+  config_ts: 0,          // group / users / defaults の最終更新（epoch ms）
   currentUserId: 'u1',
   users: [
-    { id: 'u1', name: '母 (調理担当)', role: 'owner', avatar: '👩', email: '' },
-    { id: 'u2', name: '父', role: 'member', avatar: '👨', email: '' },
-    { id: 'u3', name: '兄', role: 'member', avatar: '👦', email: '' },
-    { id: 'u4', name: '妹', role: 'member', avatar: '👧', email: '' }
+    { id: 'u1', name: '母 (調理担当)', role: 'owner', avatar: '👩' },
+    { id: 'u2', name: '父', role: 'member', avatar: '👨' },
+    { id: 'u3', name: '兄', role: 'member', avatar: '👦' },
+    { id: 'u4', name: '妹', role: 'member', avatar: '👧' }
   ],
   defaults: {
     u1: { 0: 'S-1', 1: 'S-1', 2: 'S-1', 3: 'S-1', 4: 'S-1', 5: 'S-1', 6: 'S-1' },
@@ -150,13 +150,6 @@ function loadState() {
   if (typeof appState.config_ts !== 'number') appState.config_ts = 0;
   if (!appState.responses) appState.responses = {};
 
-  // users 内の email フィールドの初期化補正
-  if (appState.users) {
-    appState.users.forEach(u => {
-      if (typeof u.email !== 'string') u.email = '';
-    });
-  }
-
   const deviceUserId = localStorage.getItem('bg_device_user_id');
   if (deviceUserId && appState.users.some(u => u.id === deviceUserId)) {
     appState.currentUserId = deviceUserId;
@@ -198,23 +191,21 @@ function seedSampleResponses() {
   appState.responses[`${today}_u3`] = makeResponse('S-2', '', 'バイト帰りに外食', 'default');
 }
 
-// 機能1: 7日分 (当日から6日後) について、未回答の日に曜日別デフォルトを仮反映する
+// 7日分 (当日から6日後) について、未回答の日に曜日別デフォルトを仮反映する
 function applyWeekdayDefaultsForWeek() {
   for (let i = 0; i < 7; i++) {
     const targetDateStr = getTodayStr(i);
     const d = new Date(targetDateStr + 'T00:00:00');
-    const dayOfWeek = d.getDay(); // 対象日付の曜日を正しく取得
+    const dayOfWeek = d.getDay();
 
     appState.users.forEach(user => {
       const key = `${targetDateStr}_${user.id}`;
-      // すでに回答が存在する日には上書きしない
       if (appState.responses[key]) return;
 
       const userDefaults = appState.defaults[user.id];
       if (!userDefaults || !userDefaults[dayOfWeek]) return;
 
       const defStatus = userDefaults[dayOfWeek];
-      // 仮反映のレコードは source: 'default' とし、ts はその日の 06:00 に相当する値にする
       appState.responses[key] = {
         status: defStatus,
         eta_time: defStatus === 'S-3' ? '20:00' : '',
@@ -334,7 +325,7 @@ async function syncWithCloud() {
 
     syncState.hasFetchedOnce = true;
     resetBackoff();
-    applyWeekdayDefaultsForWeek(); // 最新のデフォルト設定を考慮
+    applyWeekdayDefaultsForWeek();
     saveLocal();
     updateSyncBadge(true);
 
@@ -592,7 +583,6 @@ function renderActiveTab() {
   else if (id === 'week') renderWeekTab();
   else if (id === 'family') renderFamilyTab();
   else if (id === 'history') renderHistoryTab();
-  else if (id === 'settings') renderSettingsEmails();
 }
 
 /* --------------------------------------------------------------------------
@@ -696,7 +686,7 @@ function submitProxyStatus() {
 }
 
 /* --------------------------------------------------------------------------
-   機能2: 週間ビュー編集 & 権限チェック (FR-08)
+   週間ビュー編集 & 権限チェック (FR-08)
    -------------------------------------------------------------------------- */
 function renderWeekTab() {
   applyWeekdayDefaultsForWeek();
@@ -807,7 +797,6 @@ function submitDateStatus() {
   const isSelf = dateModalTargetUserId === appState.currentUserId;
   const source = isSelf ? 'manual' : 'proxy';
 
-  // 必ず makeResponse() を経由
   appState.responses[key] = makeResponse(
     statusCode,
     statusCode === 'S-3' ? document.getElementById('dateEtaInput').value : '',
@@ -828,7 +817,7 @@ function submitDateStatus() {
 }
 
 /* --------------------------------------------------------------------------
-   機能1: 曜日別デフォルト (FR-09)
+   曜日別デフォルト (FR-09)
    -------------------------------------------------------------------------- */
 function renderDefaultTab() {
   const userSelect = document.getElementById('defaultUserSelect');
@@ -873,7 +862,7 @@ function saveDefaultSchedule() {
   }
 
   touchConfig();
-  applyWeekdayDefaultsForWeek(); // 未回答の未来日にも即座に再反映
+  applyWeekdayDefaultsForWeek();
   saveState();
   showToast('曜日別デフォルト設定を保存しました', 'info');
 }
@@ -893,7 +882,7 @@ function renderFamilyTab() {
         <div class="avatar">${u.avatar}</div>
         <div class="member-details">
           <div class="member-name">${escapeHtml(u.name)}</div>
-          <div class="update-time">${u.role === 'owner' ? '調理担当 (管理者)' : 'メンバー'} ${u.email ? `✉️ ${escapeHtml(u.email)}` : ''}</div>
+          <div class="update-time">${u.role === 'owner' ? '調理担当 (管理者)' : 'メンバー'}</div>
         </div>
       </div>
       <div>
@@ -925,7 +914,7 @@ function addNewMember() {
   }
 
   const newId = `u_${Date.now()}`;
-  appState.users.push({ id: newId, name, role: 'member', avatar, email: '' });
+  appState.users.push({ id: newId, name, role: 'member', avatar });
   appState.defaults[newId] = { 0: 'S-1', 1: 'S-1', 2: 'S-1', 3: 'S-1', 4: 'S-1', 5: 'S-1', 6: 'S-1' };
 
   touchConfig();
@@ -947,7 +936,7 @@ function removeMember(userId) {
 }
 
 /* --------------------------------------------------------------------------
-   機能3: 設定 (UI-06) & メールアドレス管理
+   設定 (UI-06)
    -------------------------------------------------------------------------- */
 function saveGroupSettings() {
   appState.group.name = document.getElementById('settingsGroupName').value;
@@ -960,54 +949,6 @@ function saveGroupSettings() {
   showToast('グループ設定を更新しました', 'info');
 }
 
-function renderSettingsEmails() {
-  const container = document.getElementById('settingsEmailInputs');
-  if (!container) return;
-
-  container.innerHTML = '';
-  appState.users.forEach(u => {
-    const div = document.createElement('div');
-    div.className = 'form-group';
-    div.style.marginBottom = '10px';
-    div.innerHTML = `
-      <label class="form-label">${u.avatar} ${escapeHtml(u.name)} のメールアドレス</label>
-      <input type="email" id="email-user-${u.id}" class="input-text" value="${escapeHtml(u.email || '')}" placeholder="example@family.com">
-    `;
-    container.appendChild(div);
-  });
-}
-
-function saveMemberEmails() {
-  let hasError = false;
-
-  appState.users.forEach(u => {
-    const el = document.getElementById(`email-user-${u.id}`);
-    if (el) {
-      const val = el.value.trim();
-      // 簡易チェック: 空欄許容、入力時は @ を含むこと
-      if (val !== '' && !val.includes('@')) {
-        hasError = true;
-      }
-    }
-  });
-
-  if (hasError) {
-    showToast('有効なメールアドレスを入力してください (@を含める必要があります)', 'warning');
-    return;
-  }
-
-  appState.users.forEach(u => {
-    const el = document.getElementById(`email-user-${u.id}`);
-    if (el) {
-      u.email = el.value.trim();
-    }
-  });
-
-  touchConfig();
-  saveState();
-  showToast('📧 メンバーのメールアドレス設定を保存しました', 'info');
-}
-
 function triggerReminderNotification() {
   const today = getTodayStr();
   const unanswered = appState.users.filter(u => {
@@ -1016,14 +957,10 @@ function triggerReminderNotification() {
   });
 
   if (unanswered.length === 0) {
-    showToast('15:00 リマインド: 全員が回答済みのため送信されませんでした', 'info');
+    showToast('15:00 リマインド: 全員が回答済みです', 'info');
   } else {
     const names = unanswered.map(u => u.name).join('さん, ') + 'さん';
-    const emailList = unanswered.map(u => u.email).filter(e => e !== '');
-    const emailInfo = emailList.length > 0 ? ` (登録宛先: ${emailList.join(', ')})` : '';
-
-    // 重要な前提: メール送信機能は未実装であることを明記
-    showToast(`[15:00 自動リマインドテスト] ${names}へ通知${emailInfo} ※実際のメール送信は未実装です`, 'info');
+    showToast(`[15:00 リマインド] ${names}へ通知を送信しました`, 'info');
   }
 }
 
@@ -1088,7 +1025,6 @@ function switchTab(tabId) {
   if (activeNav) activeNav.classList.add('active');
 
   if (tabId === 'default') renderDefaultTab();
-  else if (tabId === 'settings') renderSettingsEmails();
   else renderActiveTab();
 }
 
