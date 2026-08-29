@@ -1,20 +1,17 @@
 /* ==========================================================================
    「ばんごはん、いる？」 - Core Application Logic & Realtime Multi-Device Sync
-   ※ キャッシュバスティング版 app.v3.js
+   ※ キャッシュバスティング版 app.v4.js
    ========================================================================== */
 
 // --- Cloud Sync API Configuration ---
 const SYNC_ENDPOINT = 'https://kvdb.io/AeVidZgwuAzpw3ipmY5xhR';
 
-// 同期パラメータ
-// KVdb の無料プランは 1,000 リクエスト / IP / 時間。
-// 家族が同じWi-Fi配下だと全端末で1つのIPを共有するため、間隔を長めに取る。
-// 4端末 × (3600 / 20秒) = 720 req/h → 上限内に収まる。
+// 同期パラメータ (KVdb 制限対策: 20s polling, 800ms debounce)
 const POLL_BASE_MS = 20000;      // 通常ポーリング間隔
 const POLL_MAX_MS = 120000;      // 429 発生時の最大バックオフ
 const PUSH_DEBOUNCE_MS = 800;    // 連打をまとめる
-const KEEP_DAYS_BACK = 21;       // 送信対象に含める過去日数（16KB制限対策）
-const KEEP_DAYS_FWD = 21;        // 同、未来日数
+const KEEP_DAYS_BACK = 21;       // 送信対象に含める過去日数
+const KEEP_DAYS_FWD = 21;        // 送信対象に含める未来日数
 
 const STATUS_CONFIG = {
   'S-0': { label: '未回答', icon: '❓', bgClass: 's0', text: '未回答' },
@@ -34,13 +31,13 @@ const INITIAL_STATE = {
     deadline_time: '17:00',
     reminder_time: '15:00'
   },
-  config_ts: 0,          // group / users / defaults の最終更新（epoch ms）
+  config_ts: 0,          // group / users / defaults / email の最終更新（epoch ms）
   currentUserId: 'u1',
   users: [
-    { id: 'u1', name: '母 (調理担当)', role: 'owner', avatar: '👩' },
-    { id: 'u2', name: '父', role: 'member', avatar: '👨' },
-    { id: 'u3', name: '兄', role: 'member', avatar: '👦' },
-    { id: 'u4', name: '妹', role: 'member', avatar: '👧' }
+    { id: 'u1', name: '母 (調理担当)', role: 'owner', avatar: '👩', email: '' },
+    { id: 'u2', name: '父', role: 'member', avatar: '👨', email: '' },
+    { id: 'u3', name: '兄', role: 'member', avatar: '👦', email: '' },
+    { id: 'u4', name: '妹', role: 'member', avatar: '👧', email: '' }
   ],
   defaults: {
     u1: { 0: 'S-1', 1: 'S-1', 2: 'S-1', 3: 'S-1', 4: 'S-1', 5: 'S-1', 6: 'S-1' },
@@ -53,6 +50,8 @@ const INITIAL_STATE = {
 
 let appState = {};
 let proxyTargetUserId = null;
+let dateModalTargetDate = null;
+let dateModalTargetUserId = null;
 let syncTimer = null;
 let pushTimer = null;
 
@@ -89,7 +88,7 @@ function getCurrentTimeStr() {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-// 端末の時計ずれがあっても順序が壊れにくいよう、必ず単調増加させる
+// 単調増加するタイムスタンプ生成
 let lastIssuedTs = 0;
 function nextTs() {
   const now = Date.now();
@@ -98,14 +97,14 @@ function nextTs() {
 }
 
 // 回答オブジェクトを生成（ts が同期のマージキー）
-function makeResponse(status, etaTime, note, source) {
+function makeResponse(status, etaTime, note, source, customTs = null) {
   return {
     status: status,
     eta_time: etaTime || '',
     note: note || '',
     source: source,
     updated_at: getCurrentTimeStr(), // 表示用
-    ts: nextTs()                     // マージ用（epoch ms）
+    ts: customTs || nextTs()         // マージ用（epoch ms）
   };
 }
 
@@ -114,7 +113,7 @@ function makeResponse(status, etaTime, note, source) {
    -------------------------------------------------------------------------- */
 function initApp() {
   loadState();
-  applyWeekdayDefaultsForToday();
+  applyWeekdayDefaultsForWeek();
   setupSimulationUserSelect();
   updateHeaderDateBanner();
   renderHomeTab();
@@ -124,7 +123,6 @@ function initApp() {
 
   startCloudSync();
 
-  // 画面復帰時は即同期（バックグラウンド中はポーリングを止める）
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       startCloudSync();
@@ -152,29 +150,32 @@ function loadState() {
   if (typeof appState.config_ts !== 'number') appState.config_ts = 0;
   if (!appState.responses) appState.responses = {};
 
+  // users 内の email フィールドの初期化補正
+  if (appState.users) {
+    appState.users.forEach(u => {
+      if (typeof u.email !== 'string') u.email = '';
+    });
+  }
+
   const deviceUserId = localStorage.getItem('bg_device_user_id');
   if (deviceUserId && appState.users.some(u => u.id === deviceUserId)) {
     appState.currentUserId = deviceUserId;
   }
 
-  // 起動直後は「ローカル保存のみ」。クラウドへは絶対に push しない。
   saveLocal();
 }
 
-// ローカル保存のみ（クラウドに触れない）
 function saveLocal() {
   localStorage.setItem('bg_app_state', JSON.stringify(appState));
   localStorage.setItem('bg_device_user_id', appState.currentUserId);
 }
 
-// ローカル保存 + クラウドへの送信予約
 function saveState() {
   saveLocal();
   syncState.dirty = true;
   schedulePush();
 }
 
-// 設定系（group / users / defaults）を変更したときに呼ぶ
 function touchConfig() {
   appState.config_ts = nextTs();
 }
@@ -197,27 +198,33 @@ function seedSampleResponses() {
   appState.responses[`${today}_u3`] = makeResponse('S-2', '', 'バイト帰りに外食', 'default');
 }
 
-// FR-09: 曜日別デフォルトの自動反映
-function applyWeekdayDefaultsForToday() {
-  const today = getTodayStr();
-  const dayOfWeek = new Date().getDay();
+// 機能1: 7日分 (当日から6日後) について、未回答の日に曜日別デフォルトを仮反映する
+function applyWeekdayDefaultsForWeek() {
+  for (let i = 0; i < 7; i++) {
+    const targetDateStr = getTodayStr(i);
+    const d = new Date(targetDateStr + 'T00:00:00');
+    const dayOfWeek = d.getDay(); // 対象日付の曜日を正しく取得
 
-  appState.users.forEach(user => {
-    const key = `${today}_${user.id}`;
-    if (appState.responses[key]) return;
+    appState.users.forEach(user => {
+      const key = `${targetDateStr}_${user.id}`;
+      // すでに回答が存在する日には上書きしない
+      if (appState.responses[key]) return;
 
-    const userDefaults = appState.defaults[user.id];
-    if (!userDefaults || !userDefaults[dayOfWeek]) return;
+      const userDefaults = appState.defaults[user.id];
+      if (!userDefaults || !userDefaults[dayOfWeek]) return;
 
-    appState.responses[key] = {
-      status: userDefaults[dayOfWeek],
-      eta_time: userDefaults[dayOfWeek] === 'S-3' ? '20:00' : '',
-      note: '',
-      source: 'default',
-      updated_at: '06:00',
-      ts: new Date(`${today}T06:00:00`).getTime()
-    };
-  });
+      const defStatus = userDefaults[dayOfWeek];
+      // 仮反映のレコードは source: 'default' とし、ts はその日の 06:00 に相当する値にする
+      appState.responses[key] = {
+        status: defStatus,
+        eta_time: defStatus === 'S-3' ? '20:00' : '',
+        note: '',
+        source: 'default',
+        updated_at: '06:00',
+        ts: new Date(`${targetDateStr}T06:00:00`).getTime()
+      };
+    });
+  }
   saveLocal();
 }
 
@@ -270,7 +277,6 @@ function mergeResponses(local, cloud) {
   return out;
 }
 
-// 16KB 制限対策: 前後 KEEP_DAYS 日分だけを送信対象にする
 function prunedResponses() {
   const min = getTodayStr(-KEEP_DAYS_BACK);
   const max = getTodayStr(KEEP_DAYS_FWD);
@@ -286,7 +292,6 @@ async function syncWithCloud() {
   if (syncState.fetching) return;
   syncState.fetching = true;
 
-  // ブラウザ／中間キャッシュが古いレスポンスを返すのを防ぐ
   const url = `${cloudUrl()}?_=${Date.now()}`;
 
   try {
@@ -329,6 +334,7 @@ async function syncWithCloud() {
 
     syncState.hasFetchedOnce = true;
     resetBackoff();
+    applyWeekdayDefaultsForWeek(); // 最新のデフォルト設定を考慮
     saveLocal();
     updateSyncBadge(true);
 
@@ -351,7 +357,6 @@ function schedulePush() {
 }
 
 async function pushToCloud() {
-  // 初回フェッチ前は送らない（他端末のデータを消さないため）
   if (!syncState.hasFetchedOnce) return;
   if (syncState.pushing) return;
 
@@ -366,7 +371,6 @@ async function pushToCloud() {
   });
 
   try {
-    // Content-Type を明示しない（CORS プリフライトを避けるため）
     const res = await fetch(cloudUrl(), { method: 'POST', body: payload });
 
     if (res.status === 429) {
@@ -588,10 +592,11 @@ function renderActiveTab() {
   else if (id === 'week') renderWeekTab();
   else if (id === 'family') renderFamilyTab();
   else if (id === 'history') renderHistoryTab();
+  else if (id === 'settings') renderSettingsEmails();
 }
 
 /* --------------------------------------------------------------------------
-   回答登録
+   回答登録 (makeResponse() 経由必須)
    -------------------------------------------------------------------------- */
 function submitStatus(statusCode) {
   const today = getTodayStr();
@@ -691,12 +696,11 @@ function submitProxyStatus() {
 }
 
 /* --------------------------------------------------------------------------
-   週間ビュー (FR-08) & 未来・過去日付の回答設定
+   機能2: 週間ビュー編集 & 権限チェック (FR-08)
    -------------------------------------------------------------------------- */
-let dateModalTargetDate = null;
-let dateModalTargetUserId = null;
-
 function renderWeekTab() {
+  applyWeekdayDefaultsForWeek();
+
   const table = document.getElementById('weekTable');
   table.innerHTML = '';
 
@@ -718,15 +722,41 @@ function renderWeekTab() {
       const dateStr = getTodayStr(i);
       const res = appState.responses[`${dateStr}_${u.id}`];
       const cfg = STATUS_CONFIG[res ? res.status : 'S-0'];
+      
+      const isDefault = res && res.source === 'default';
+      const autoTagText = isDefault ? ' <span class="auto-tag" style="font-size:9px;">(自動)</span>' : '';
+
       tr.innerHTML += `<td>
-        <div class="matrix-cell status-badge ${cfg.bgClass}" onclick="openDateModal('${dateStr}', '${u.id}')" title="タップして${getFormattedDisplayDate(i)}の予定を設定">
-          ${cfg.icon} ${cfg.text}
+        <div class="matrix-cell status-badge ${cfg.bgClass}" onclick="handleWeekCellClick('${dateStr}', '${u.id}')" title="タップして編集">
+          ${cfg.icon} ${cfg.text}${autoTagText}
         </div>
       </td>`;
     }
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
+}
+
+// 週間ビューのセルタップ時権限チェック
+function handleWeekCellClick(dateStr, userId) {
+  const todayStr = getTodayStr();
+
+  // 過去日のチェック
+  if (dateStr < todayStr) {
+    showToast('過去の日付の予定は編集できません', 'warning');
+    return;
+  }
+
+  // 権限チェック
+  const isSelf = userId === appState.currentUserId;
+  const isOwner = getCurrentUser().role === 'owner';
+
+  if (!isSelf && !isOwner) {
+    showToast('他メンバーの予定を変更できるのは管理者(調理担当者)のみです', 'warning');
+    return;
+  }
+
+  openDateModal(dateStr, userId);
 }
 
 function openDateModal(dateStr, userId) {
@@ -777,6 +807,7 @@ function submitDateStatus() {
   const isSelf = dateModalTargetUserId === appState.currentUserId;
   const source = isSelf ? 'manual' : 'proxy';
 
+  // 必ず makeResponse() を経由
   appState.responses[key] = makeResponse(
     statusCode,
     statusCode === 'S-3' ? document.getElementById('dateEtaInput').value : '',
@@ -793,11 +824,11 @@ function submitDateStatus() {
 
   const d = new Date(dateModalTargetDate + 'T00:00:00');
   const dateFormatted = `${d.getMonth() + 1}/${d.getDate()}(${DAY_NAMES[d.getDay()]})`;
-  showToast(`🗓 ${dateFormatted} ${targetUser.name}さんの予定を「${STATUS_CONFIG[statusCode].label}」に設定しました`, 'info');
+  showToast(`🗓 ${dateFormatted} ${targetUser.name}さんの予定を「${STATUS_CONFIG[statusCode].label}」に更新しました`, 'info');
 }
 
 /* --------------------------------------------------------------------------
-   曜日別デフォルト (FR-09)
+   機能1: 曜日別デフォルト (FR-09)
    -------------------------------------------------------------------------- */
 function renderDefaultTab() {
   const userSelect = document.getElementById('defaultUserSelect');
@@ -842,6 +873,7 @@ function saveDefaultSchedule() {
   }
 
   touchConfig();
+  applyWeekdayDefaultsForWeek(); // 未回答の未来日にも即座に再反映
   saveState();
   showToast('曜日別デフォルト設定を保存しました', 'info');
 }
@@ -861,7 +893,7 @@ function renderFamilyTab() {
         <div class="avatar">${u.avatar}</div>
         <div class="member-details">
           <div class="member-name">${escapeHtml(u.name)}</div>
-          <div class="update-time">${u.role === 'owner' ? '調理担当 (管理者)' : 'メンバー'}</div>
+          <div class="update-time">${u.role === 'owner' ? '調理担当 (管理者)' : 'メンバー'} ${u.email ? `✉️ ${escapeHtml(u.email)}` : ''}</div>
         </div>
       </div>
       <div>
@@ -893,7 +925,7 @@ function addNewMember() {
   }
 
   const newId = `u_${Date.now()}`;
-  appState.users.push({ id: newId, name, role: 'member', avatar });
+  appState.users.push({ id: newId, name, role: 'member', avatar, email: '' });
   appState.defaults[newId] = { 0: 'S-1', 1: 'S-1', 2: 'S-1', 3: 'S-1', 4: 'S-1', 5: 'S-1', 6: 'S-1' };
 
   touchConfig();
@@ -915,7 +947,7 @@ function removeMember(userId) {
 }
 
 /* --------------------------------------------------------------------------
-   設定 (UI-06)
+   機能3: 設定 (UI-06) & メールアドレス管理
    -------------------------------------------------------------------------- */
 function saveGroupSettings() {
   appState.group.name = document.getElementById('settingsGroupName').value;
@@ -926,6 +958,54 @@ function saveGroupSettings() {
   saveState();
   updateHeaderDateBanner();
   showToast('グループ設定を更新しました', 'info');
+}
+
+function renderSettingsEmails() {
+  const container = document.getElementById('settingsEmailInputs');
+  if (!container) return;
+
+  container.innerHTML = '';
+  appState.users.forEach(u => {
+    const div = document.createElement('div');
+    div.className = 'form-group';
+    div.style.marginBottom = '10px';
+    div.innerHTML = `
+      <label class="form-label">${u.avatar} ${escapeHtml(u.name)} のメールアドレス</label>
+      <input type="email" id="email-user-${u.id}" class="input-text" value="${escapeHtml(u.email || '')}" placeholder="example@family.com">
+    `;
+    container.appendChild(div);
+  });
+}
+
+function saveMemberEmails() {
+  let hasError = false;
+
+  appState.users.forEach(u => {
+    const el = document.getElementById(`email-user-${u.id}`);
+    if (el) {
+      const val = el.value.trim();
+      // 簡易チェック: 空欄許容、入力時は @ を含むこと
+      if (val !== '' && !val.includes('@')) {
+        hasError = true;
+      }
+    }
+  });
+
+  if (hasError) {
+    showToast('有効なメールアドレスを入力してください (@を含める必要があります)', 'warning');
+    return;
+  }
+
+  appState.users.forEach(u => {
+    const el = document.getElementById(`email-user-${u.id}`);
+    if (el) {
+      u.email = el.value.trim();
+    }
+  });
+
+  touchConfig();
+  saveState();
+  showToast('📧 メンバーのメールアドレス設定を保存しました', 'info');
 }
 
 function triggerReminderNotification() {
@@ -939,7 +1019,11 @@ function triggerReminderNotification() {
     showToast('15:00 リマインド: 全員が回答済みのため送信されませんでした', 'info');
   } else {
     const names = unanswered.map(u => u.name).join('さん, ') + 'さん';
-    showToast(`[15:00 自動リマインド] ${names}へ通知を送信しました`, 'info');
+    const emailList = unanswered.map(u => u.email).filter(e => e !== '');
+    const emailInfo = emailList.length > 0 ? ` (登録宛先: ${emailList.join(', ')})` : '';
+
+    // 重要な前提: メール送信機能は未実装であることを明記
+    showToast(`[15:00 自動リマインドテスト] ${names}へ通知${emailInfo} ※実際のメール送信は未実装です`, 'info');
   }
 }
 
@@ -1004,6 +1088,7 @@ function switchTab(tabId) {
   if (activeNav) activeNav.classList.add('active');
 
   if (tabId === 'default') renderDefaultTab();
+  else if (tabId === 'settings') renderSettingsEmails();
   else renderActiveTab();
 }
 
