@@ -1,6 +1,6 @@
 /* ==========================================================================
    「ばんごはん、いる？」 - Core Application Logic & Realtime Multi-Device Sync
-   ※ 同期不具合の修正版
+   ※ キャッシュバスティング版 app.v3.js
    ========================================================================== */
 
 // --- Cloud Sync API Configuration ---
@@ -158,8 +158,6 @@ function loadState() {
   }
 
   // 起動直後は「ローカル保存のみ」。クラウドへは絶対に push しない。
-  // ここで push すると、初回起動端末のサンプルデータで
-  // 他端末の実データを上書きしてしまう。
   saveLocal();
 }
 
@@ -200,8 +198,6 @@ function seedSampleResponses() {
 }
 
 // FR-09: 曜日別デフォルトの自動反映
-// 未同期の段階で作られた仮回答が他端末の実回答を上書きしないよう、
-// source: 'default' の ts は意図的に最小値に近づけておく。
 function applyWeekdayDefaultsForToday() {
   const today = getTodayStr();
   const dayOfWeek = new Date().getDay();
@@ -219,8 +215,6 @@ function applyWeekdayDefaultsForToday() {
       note: '',
       source: 'default',
       updated_at: '06:00',
-      // 自動生成は「その日の 06:00 に作られたもの」として扱う。
-      // 手動回答（現在時刻の ts）より必ず古くなるのでマージで負ける。
       ts: new Date(`${today}T06:00:00`).getTime()
     };
   });
@@ -305,7 +299,6 @@ async function syncWithCloud() {
     }
 
     if (res.status === 404) {
-      // クラウドにまだデータが無い。初回だけ自分の状態を初期投入する。
       syncState.hasFetchedOnce = true;
       syncState.dirty = true;
       resetBackoff();
@@ -325,7 +318,6 @@ async function syncWithCloud() {
       if (cloudData.responses) {
         appState.responses = mergeResponses(appState.responses, cloudData.responses);
       }
-      // 設定系はクラウド側が新しいときだけ採用する
       const cloudCfgTs = cloudData.config_ts || 0;
       if (cloudCfgTs > (appState.config_ts || 0)) {
         if (cloudData.users) appState.users = cloudData.users;
@@ -343,7 +335,6 @@ async function syncWithCloud() {
     const after = JSON.stringify(appState.responses) + appState.config_ts;
     if (before !== after) renderActiveTab();
 
-    // 未送信のローカル変更があれば、マージ後の状態を送り返す
     if (syncState.dirty) await pushToCloud();
 
   } catch (err) {
@@ -431,7 +422,6 @@ function setupSimulationUserSelect() {
   updateUserRoleBadge();
 }
 
-// 「この端末が誰か」は端末固有の設定。クラウドに送らない。
 function switchUser(userId) {
   appState.currentUserId = userId;
   saveLocal();
@@ -518,7 +508,6 @@ function renderHomeTab() {
     extraOptions.style.display = 'flex';
     if (myStatus === 'S-3') {
       etaGroup.style.display = 'flex';
-      // 入力中のフォーカスを奪わない
       if (document.activeElement !== etaInput) {
         etaInput.value = (myResponse && myResponse.eta_time) ? myResponse.eta_time : '20:00';
       }
@@ -591,7 +580,6 @@ function renderHomeTab() {
   });
 }
 
-// 現在開いているタブだけを再描画する
 function renderActiveTab() {
   const active = document.querySelector('.tab-pane.active');
   if (!active) return;

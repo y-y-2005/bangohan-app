@@ -1,42 +1,27 @@
-// 修正版 Service Worker
-// 旧版は cache-first だったため、app.js を直しても端末に古いコードが配信され続けた。
-const CACHE_NAME = 'bangohan-v3';
-const ASSETS = [
-  './',
-  './index.html',
-  './styles.css',
-  './app.js',
-  './manifest.json'
-];
+// bangohan-app / sw.js
+//
+// 旧版(v1, v2)は cache-first だったため、app.js を更新しても端末に
+// 古いコードが配信され続けた。この版は「一切キャッシュしない」。
+//
+// - fetch ハンドラを持たないので、すべての通信が素通りする
+// - activate 時に過去のキャッシュを全削除する
+// - skipWaiting + clients.claim で即時に旧版を置き換える
+//
+// PWA としてのホーム画面追加は manifest.json 側で成立するため、
+// この Service Worker のままでも「アプリとして追加」は引き続き可能。
+// オフライン対応は、同期が安定してから改めて入れること。
 
-self.addEventListener('install', event => {
+self.addEventListener('install', () => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-
-  // 同期API等の外部リクエストには一切介入しない
-  if (url.origin !== self.location.origin) return;
-  if (event.request.method !== 'GET') return;
-
-  // network-first: 最新のコードを優先し、通信不可のときだけキャッシュを使う
-  event.respondWith(
-    fetch(event.request)
-      .then(res => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
-        return res;
-      })
-      .catch(() => caches.match(event.request))
-  );
-});
+// fetch ハンドラは意図的に登録しない。
+// これにより、すべてのリクエストがネットワークへ直接届く。
