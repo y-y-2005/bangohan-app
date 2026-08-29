@@ -3,274 +3,221 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>同期診断ツール - ばんごはん、いる？</title>
+<title>同期診断ツール v2 - ばんごはん、いる？</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
-    background: #FAF7F2; color: #2D2725; line-height: 1.6;
-    padding: 16px; max-width: 560px; margin: 0 auto;
-  }
-  h1 { font-size: 18px; margin-bottom: 4px; }
-  .sub { font-size: 13px; color: #786F6A; margin-bottom: 16px; }
-  .card { background: #fff; border: 1px solid #E6DFD5; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
-  .card h2 { font-size: 14px; margin-bottom: 8px; }
-  label { display: block; font-size: 12px; color: #786F6A; margin-bottom: 4px; font-weight: 700; }
-  input {
-    width: 100%; padding: 10px; border: 1px solid #E6DFD5; border-radius: 8px;
-    font-size: 14px; margin-bottom: 10px; font-family: inherit;
-  }
-  button {
-    background: #E05A47; color: #fff; border: none; border-radius: 10px;
-    padding: 12px 16px; font-size: 15px; font-weight: 700; width: 100%;
-    cursor: pointer; font-family: inherit;
-  }
-  button.sec { background: #F3EFE9; color: #2D2725; border: 1px solid #E6DFD5; }
-  button:disabled { opacity: 0.5; }
-  .row { display: flex; gap: 8px; }
-  pre {
-    background: #F3EFE9; border-radius: 8px; padding: 10px; font-size: 12px;
-    white-space: pre-wrap; word-break: break-all; margin-top: 10px;
-    max-height: 320px; overflow: auto; font-family: ui-monospace, Menlo, Consolas, monospace;
-  }
-  .r { padding: 8px 10px; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
-  .ok { background: #E7F6EC; color: #1B5E20; }
-  .ng { background: #FDE8E5; color: #C62828; }
-  .wa { background: #FFF3E0; color: #E65100; }
-  .in { background: #F3EFE9; color: #55504D; }
-  .note { font-size: 12px; color: #786F6A; margin-top: 8px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+    background:#FAF7F2; color:#2D2725; line-height:1.6; padding:16px; max-width:560px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:4px; }
+  .sub { font-size:13px; color:#786F6A; margin-bottom:16px; }
+  .card { background:#fff; border:1px solid #E6DFD5; border-radius:12px; padding:14px; margin-bottom:12px; }
+  .card h2 { font-size:14px; margin-bottom:8px; }
+  label { display:block; font-size:12px; color:#786F6A; margin-bottom:4px; font-weight:700; }
+  input { width:100%; padding:10px; border:1px solid #E6DFD5; border-radius:8px;
+    font-size:14px; margin-bottom:10px; font-family:inherit; }
+  button { background:#E05A47; color:#fff; border:none; border-radius:10px; padding:12px 16px;
+    font-size:15px; font-weight:700; width:100%; cursor:pointer; font-family:inherit; }
+  button.sec { background:#F3EFE9; color:#2D2725; border:1px solid #E6DFD5; margin-top:8px; }
+  button:disabled { opacity:.5; }
+  pre { background:#F3EFE9; border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap;
+    word-break:break-all; margin-top:10px; max-height:280px; overflow:auto;
+    font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .r { padding:8px 10px; border-radius:8px; margin-bottom:6px; font-size:13px; }
+  .ok { background:#E7F6EC; color:#1B5E20; }
+  .ng { background:#FDE8E5; color:#C62828; }
+  .wa { background:#FFF3E0; color:#E65100; }
+  .in { background:#F3EFE9; color:#55504D; }
+  .big { font-weight:800; font-size:14px; }
+  .note { font-size:12px; color:#786F6A; margin-top:8px; }
 </style>
 </head>
 <body>
 
-<h1>同期診断ツール</h1>
-<div class="sub">アプリ本体から切り離して、同期部分だけを検査します。家族の端末それぞれで開いてください。</div>
+<h1>同期診断ツール v2</h1>
+<div class="sub">デプロイ状態・キャッシュ状態・クラウドデータ形式をまとめて検査します。</div>
 
 <div class="card">
-  <h2>1. 接続先の設定</h2>
+  <h2>設定</h2>
   <label for="bucket">KVdb バケットID</label>
   <input id="bucket" value="AeVidZgwuAzpw3ipmY5xhR">
   <label for="key">キー名</label>
   <input id="key" value="group_BINGO2026">
   <button onclick="runAll()" id="runBtn">診断を実行する</button>
+  <button class="sec" onclick="nuke()">この端末のキャッシュとService Workerを強制削除</button>
+  <div id="nukeOut"></div>
 </div>
 
-<div class="card" id="envCard">
-  <h2>2. 実行環境</h2>
-  <div id="envOut"><div class="r in">「診断を実行する」を押してください</div></div>
-</div>
-
-<div class="card">
-  <h2>3. 通信テスト</h2>
-  <div id="netOut"><div class="r in">未実行</div></div>
-  <pre id="raw" style="display:none;"></pre>
-</div>
-
-<div class="card">
-  <h2>4. 判定</h2>
-  <div id="verdict"><div class="r in">未実行</div></div>
-</div>
-
-<div class="card">
-  <h2>5. バケットを新規作成する</h2>
-  <div class="note">
-    バケットが存在しない場合はここで作成します。作成にはメールアドレスが必要です（KVdb社に送信されます）。
-    作成後に表示されるIDを、上の「バケットID」と app.js の SYNC_ENDPOINT に貼り替えてください。
-  </div>
-  <label for="email" style="margin-top:10px;">メールアドレス</label>
-  <input id="email" type="email" placeholder="your@example.com">
-  <button class="sec" onclick="createBucket()">バケットを作成する</button>
-  <div id="createOut"></div>
-</div>
+<div class="card"><h2>1. 実行環境</h2><div id="envOut"><div class="r in">未実行</div></div></div>
+<div class="card"><h2>2. サーバ上のデプロイ状態</h2><div id="depOut"><div class="r in">未実行</div></div></div>
+<div class="card"><h2>3. この端末のキャッシュ状態</h2><div id="cacheOut"><div class="r in">未実行</div></div></div>
+<div class="card"><h2>4. クラウドのデータ形式</h2><div id="dataOut"><div class="r in">未実行</div></div>
+  <pre id="raw" style="display:none;"></pre></div>
+<div class="card"><h2>5. 判定</h2><div id="verdict"><div class="r in">未実行</div></div></div>
 
 <script>
 const $ = id => document.getElementById(id);
 function line(el, cls, text) {
-  const d = document.createElement('div');
-  d.className = 'r ' + cls;
-  d.textContent = text;
-  $(el).appendChild(d);
+  const d = document.createElement('div'); d.className = 'r ' + cls; d.textContent = text; $(el).appendChild(d);
 }
-function clear(el) { $(el).innerHTML = ''; }
+function clear(el){ $(el).innerHTML = ''; }
+const bust = u => u + (u.includes('?') ? '&' : '?') + '_=' + Date.now();
+const F = {};
 
-function checkEnv() {
+async function checkEnv() {
   clear('envOut');
-  const proto = location.protocol;
-  line('envOut', 'in', '現在のURL: ' + (location.href || '(不明)'));
+  line('envOut','in','URL: ' + location.href);
+  line('envOut', location.protocol === 'https:' ? 'ok' : 'ng', 'プロトコル: ' + location.protocol);
+  line('envOut', navigator.onLine ? 'ok' : 'ng', navigator.onLine ? 'オンライン' : 'オフライン判定');
+}
 
-  if (proto === 'file:') {
-    line('envOut', 'ng', 'file:// で開いています。この場合 Service Worker は登録できず、外部への通信もブラウザに拒否されることがあります。必ずWebサーバ経由(https://)で配信してください。');
-  } else if (proto === 'https:') {
-    line('envOut', 'ok', 'https で配信されています。');
-  } else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    line('envOut', 'wa', 'localhost です。手元の検証には使えますが、他の端末からは開けません。');
-  } else {
-    line('envOut', 'wa', 'プロトコル: ' + proto + ' (https を推奨)');
+// サーバに実際に置かれているファイルを、キャッシュを回避して取得する
+async function checkDeploy() {
+  clear('depOut');
+  const base = location.href.replace(/[^/]*$/, '');
+
+  // index.html がどのスクリプトを読んでいるか
+  try {
+    const r = await fetch(bust(base + 'index.html'), { cache: 'no-store' });
+    const html = await r.text();
+    const m = html.match(/<script[^>]+src=["']([^"']*app[^"']*\.js[^"']*)["']/i);
+    F.scriptSrc = m ? m[1] : null;
+    if (F.scriptSrc) {
+      const isNew = /app\.v3\.js/.test(F.scriptSrc);
+      line('depOut', isNew ? 'ok' : 'ng', 'index.html が読み込むスクリプト: ' + F.scriptSrc +
+        (isNew ? '' : '  ← app.v3.js になっていません'));
+    } else {
+      line('depOut','ng','index.html 内に app系スクリプトの参照が見つかりません');
+    }
+  } catch(e){ line('depOut','ng','index.html を取得できません: ' + e); }
+
+  // 新旧スクリプトの存在確認と中身の判定
+  for (const name of ['app.v3.js','app.js']) {
+    try {
+      const r = await fetch(bust(base + name), { cache: 'no-store' });
+      if (!r.ok) { line('depOut','in', name + ': 存在しません (' + r.status + ')'); F[name]=null; continue; }
+      const src = await r.text();
+      const hasTs = /ts:\s*nextTs\(\)/.test(src) || /nextTs\s*\(/.test(src);
+      const hasMerge = /mergeResponses/.test(src);
+      const hasGuard = /hasFetchedOnce/.test(src);
+      F[name] = { hasTs, hasMerge, hasGuard };
+      const fixed = hasTs && hasMerge && hasGuard;
+      line('depOut', fixed ? 'ok' : 'wa', name + ': 存在 — ' +
+        (fixed ? '修正版です (ts / mergeResponses / hasFetchedOnce すべて確認)'
+               : '修正前です (ts:' + hasTs + ' merge:' + hasMerge + ' guard:' + hasGuard + ')'));
+    } catch(e){ line('depOut','ng', name + ' の取得に失敗: ' + e); }
   }
 
-  line('envOut', navigator.onLine ? 'ok' : 'ng',
-       navigator.onLine ? 'ネットワーク: オンライン' : 'ネットワーク: オフライン判定');
+  // sw.js が fetch を横取りしていないか
+  try {
+    const r = await fetch(bust(base + 'sw.js'), { cache: 'no-store' });
+    const src = await r.text();
+    const intercepts = /addEventListener\s*\(\s*['"]fetch['"]/.test(src);
+    F.swIntercepts = intercepts;
+    line('depOut', intercepts ? 'ng' : 'ok', 'sw.js: ' +
+      (intercepts ? 'fetchハンドラが残っています。古いコードが配信され続けます。'
+                  : 'fetchハンドラなし。キャッシュしない実装です。'));
+  } catch(e){ line('depOut','ng','sw.js の取得に失敗: ' + e); }
+}
 
+async function checkCache() {
+  clear('cacheOut');
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(rs => {
-      if (rs.length === 0) {
-        line('envOut', 'in', 'Service Worker: 未登録');
-      } else {
-        rs.forEach(r => {
-          const sw = r.active || r.installing || r.waiting;
-          line('envOut', 'wa', 'Service Worker 登録あり: ' + (sw ? sw.scriptURL : '(不明)') +
-               ' — 古いコードが配信されている可能性があります。開発者ツールから登録解除してください。');
-        });
-      }
+    const rs = await navigator.serviceWorker.getRegistrations();
+    if (!rs.length) line('cacheOut','in','Service Worker: 未登録');
+    else rs.forEach(r => {
+      const sw = r.active || r.waiting || r.installing;
+      line('cacheOut','in','Service Worker: ' + (sw ? sw.state : '?') + ' / ' + (sw ? sw.scriptURL : '?'));
+      if (r.waiting) line('cacheOut','wa','待機中の新バージョンがあります。全タブを閉じて開き直してください。');
     });
   }
+  if (window.caches) {
+    const keys = await caches.keys();
+    F.cacheKeys = keys;
+    if (!keys.length) line('cacheOut','ok','キャッシュ: 空です。新しい sw.js が正しく動作しています。');
+    else line('cacheOut','ng','キャッシュが残存: ' + keys.join(', ') + '  ← 古い sw.js がまだ有効です');
+  }
 }
 
-let lastResults = {};
-
-async function runAll() {
-  $('runBtn').disabled = true;
-  checkEnv();
-  clear('netOut');
-  clear('verdict');
-  $('raw').style.display = 'none';
-
-  const bucket = $('bucket').value.trim();
-  const key = $('key').value.trim();
-  const base = 'https://kvdb.io/' + bucket;
-  const url = base + '/' + key;
-  lastResults = {};
-
-  // --- テストA: 読み取り ---
+async function checkData() {
+  clear('dataOut'); $('raw').style.display='none';
+  const url = 'https://kvdb.io/' + $('bucket').value.trim() + '/' + $('key').value.trim();
   try {
-    const res = await fetch(url + '?_=' + Date.now(), { cache: 'no-store' });
-    lastResults.getStatus = res.status;
-    const body = await res.text();
-    lastResults.getBody = body;
+    const r = await fetch(bust(url), { cache: 'no-store' });
+    if (!r.ok) { line('dataOut', r.status===404?'wa':'ng','読み取り HTTP ' + r.status); F.cloud=null; return; }
+    const text = await r.text();
+    const d = JSON.parse(text);
+    F.cloud = d;
+    $('raw').style.display='block'; $('raw').textContent = text.slice(0,4000);
 
-    const remain = res.headers.get('X-Ratelimit-Remaining');
-    if (remain !== null) {
-      lastResults.remain = remain;
-      line('netOut', Number(remain) > 50 ? 'ok' : 'ng', 'レート制限の残り: ' + remain + ' / 1000 (毎時)');
-    } else {
-      line('netOut', 'in', 'レート制限ヘッダは読み取れません (CORSで非公開)');
+    const resKeys = Object.keys(d.responses || {});
+    const withTs = resKeys.filter(k => typeof d.responses[k].ts === 'number');
+    F.tsRatio = resKeys.length ? withTs.length / resKeys.length : 0;
+
+    line('dataOut', withTs.length === resKeys.length && resKeys.length > 0 ? 'ok' : 'ng',
+      'ts を持つ回答: ' + withTs.length + ' / ' + resKeys.length + ' 件');
+    line('dataOut', typeof d.config_ts === 'number' ? 'ok' : 'ng',
+      'config_ts: ' + (typeof d.config_ts === 'number' ? d.config_ts : 'なし'));
+
+    if (d.updated_at) {
+      const t = new Date(d.updated_at);
+      const ago = Math.round((Date.now() - d.updated_at)/1000);
+      line('dataOut','in','最終書き込み: ' + t.toLocaleString('ja-JP') + ' (' + ago + '秒前)');
+      F.ago = ago;
     }
-
-    if (res.status === 200) {
-      line('netOut', 'ok', 'A. 読み取り成功 (200)。データ長 ' + body.length + ' バイト');
-      $('raw').style.display = 'block';
-      $('raw').textContent = body.slice(0, 4000);
-    } else if (res.status === 404) {
-      line('netOut', 'wa', 'A. 読み取り 404。バケットが無いか、まだ一度も書き込めていません。');
-    } else if (res.status === 429) {
-      line('netOut', 'ng', 'A. 読み取り 429。レート制限に達しています。');
-    } else {
-      line('netOut', 'ng', 'A. 読み取り失敗。HTTP ' + res.status);
-    }
-  } catch (e) {
-    lastResults.getError = String(e);
-    line('netOut', 'ng', 'A. 読み取りが例外で失敗: ' + e + ' (CORS拒否、通信遮断、またはサービス停止)');
-  }
-
-  // --- テストB: 書き込み ---
-  const probeKey = '__diag_' + Math.random().toString(36).slice(2, 8);
-  const probeVal = 'ok_' + Date.now();
-  try {
-    const res = await fetch(base + '/' + probeKey, { method: 'POST', body: probeVal });
-    lastResults.postStatus = res.status;
-    if (res.ok) {
-      line('netOut', 'ok', 'B. 書き込み成功 (' + res.status + ')');
-    } else if (res.status === 404) {
-      line('netOut', 'ng', 'B. 書き込み 404。このバケットIDは存在しません。');
-    } else if (res.status === 401 || res.status === 403) {
-      line('netOut', 'ng', 'B. 書き込み拒否 (' + res.status + ')。書き込みキーが必要な設定です。');
-    } else if (res.status === 429) {
-      line('netOut', 'ng', 'B. 書き込み 429。レート制限です。');
-    } else {
-      line('netOut', 'ng', 'B. 書き込み失敗。HTTP ' + res.status);
-    }
-  } catch (e) {
-    lastResults.postError = String(e);
-    line('netOut', 'ng', 'B. 書き込みが例外で失敗: ' + e);
-  }
-
-  // --- テストC: 往復確認 ---
-  if (lastResults.postStatus && lastResults.postStatus < 300) {
-    try {
-      const res = await fetch(base + '/' + probeKey + '?_=' + Date.now(), { cache: 'no-store' });
-      const got = await res.text();
-      lastResults.roundTrip = (got.trim() === probeVal);
-      if (lastResults.roundTrip) {
-        line('netOut', 'ok', 'C. 書き込んだ値を読み戻せました。往復は正常です。');
-      } else {
-        line('netOut', 'ng', 'C. 読み戻した値が一致しません。期待 "' + probeVal + '" / 実際 "' + got.slice(0, 40) + '" — キャッシュを疑ってください。');
-      }
-    } catch (e) {
-      line('netOut', 'ng', 'C. 読み戻しが例外で失敗: ' + e);
-    }
-  }
-
-  judge();
-  $('runBtn').disabled = false;
+  } catch(e){ line('dataOut','ng','取得または解析に失敗: ' + e); }
 }
 
 function judge() {
   clear('verdict');
-  const r = lastResults;
+  const newDeployed = F.scriptSrc && /app\.v3\.js/.test(F.scriptSrc) && F['app.v3.js'] &&
+                      F['app.v3.js'].hasTs && F['app.v3.js'].hasMerge && F['app.v3.js'].hasGuard;
 
-  if (r.getError && r.postError) {
-    line('verdict', 'ng', 'kvdb.io に一切到達できていません。サービス停止、CORS拒否、または回線の遮断です。別の同期先への移行を検討してください。');
+  if (!newDeployed) {
+    line('verdict','ng','サーバ上のデプロイが未完了です。index.html が app.v3.js を読み、その中身が修正版である必要があります。上の「2」を確認してください。');
     return;
   }
-  if (r.postStatus === 404 || r.getStatus === 404 && r.postStatus === 404) {
-    line('verdict', 'ng', '原因確定: このバケットIDは存在しません。下の「5」でバケットを作成し、新しいIDに差し替えてください。これが直れば同期は動きます。');
+  line('verdict','ok','サーバ上のデプロイは完了しています。');
+
+  if (F.swIntercepts) { line('verdict','ng','ただし sw.js に fetch ハンドラが残っています。差し替えてください。'); return; }
+  if (F.cacheKeys && F.cacheKeys.length) {
+    line('verdict','ng','この端末に古いキャッシュが残っています。上の「この端末のキャッシュとService Workerを強制削除」を押し、その後リロードしてください。');
     return;
   }
-  if (r.getStatus === 429 || r.postStatus === 429) {
-    line('verdict', 'ng', '原因確定: レート制限(毎時1000)超過です。ポーリング間隔を延ばすか、有料プランか別サービスへ移行してください。1時間待てば復帰します。');
-    return;
+  line('verdict','ok','この端末のキャッシュも正常です。');
+
+  if (F.tsRatio === 1) {
+    line('verdict','ok','クラウドのデータも新形式です。同期は正常に動作しています。');
+  } else if (F.ago !== undefined && F.ago > 300) {
+    line('verdict','wa','クラウドのデータはまだ旧形式ですが、最終書き込みが ' + Math.round(F.ago/60) + '分前です。アプリを開いてボタンを押し、書き込みを発生させてから再診断してください。');
+  } else {
+    line('verdict','ng','コードは新しいのにクラウドが旧形式です。古いコードが動いている端末が家族の中に残っている可能性があります。全端末を確認してください。');
   }
-  if (r.roundTrip === false) {
-    line('verdict', 'wa', '通信自体は成功していますが、書いた値を読み戻せていません。キャッシュ層を疑ってください。');
-    return;
-  }
-  if (r.roundTrip === true && r.getStatus === 404) {
-    line('verdict', 'wa', 'バケットは正常です。ただし本番キーにまだデータがありません。アプリ側が一度も書き込めていない状態です。');
-    return;
-  }
-  if (r.roundTrip === true && r.getStatus === 200) {
-    line('verdict', 'ok', 'バケットも通信も正常です。同期先は問題ありません。原因はアプリ側のコードにあります。上の「3」に表示された実データを確認してください。');
-    line('verdict', 'in', '確認点: 家族の端末で「バケットID」と「キー名」が完全に一致しているか。招待コードを変えるとキー名が変わります。');
-    return;
-  }
-  line('verdict', 'wa', '判定できませんでした。上のテスト結果をそのまま貼って相談してください。');
 }
 
-async function createBucket() {
-  const email = $('email').value.trim();
-  clear('createOut');
-  if (!email) {
-    line('createOut', 'ng', 'メールアドレスを入力してください。');
-    return;
-  }
+async function runAll() {
+  $('runBtn').disabled = true;
+  await checkEnv(); await checkDeploy(); await checkCache(); await checkData(); judge();
+  $('runBtn').disabled = false;
+}
+
+async function nuke() {
+  clear('nukeOut');
   try {
-    const res = await fetch('https://kvdb.io/', {
-      method: 'POST',
-      body: 'email=' + encodeURIComponent(email)
-    });
-    const id = (await res.text()).trim();
-    if (res.ok && id) {
-      line('createOut', 'ok', '作成できました。バケットID: ' + id);
-      line('createOut', 'in', 'このIDを上の入力欄と app.js の SYNC_ENDPOINT に貼り替えて、もう一度診断してください。');
-      $('bucket').value = id;
-    } else {
-      line('createOut', 'ng', '作成に失敗しました。HTTP ' + res.status + ' / ' + id.slice(0, 200));
+    if ('serviceWorker' in navigator) {
+      const rs = await navigator.serviceWorker.getRegistrations();
+      for (const r of rs) await r.unregister();
+      line('nukeOut','ok','Service Worker を ' + rs.length + ' 件 登録解除しました');
     }
-  } catch (e) {
-    line('createOut', 'ng', '作成が例外で失敗: ' + e);
-  }
+    if (window.caches) {
+      const keys = await caches.keys();
+      for (const k of keys) await caches.delete(k);
+      line('nukeOut','ok','キャッシュを ' + keys.length + ' 件 削除しました');
+    }
+    localStorage.removeItem('bg_app_state');
+    line('nukeOut','ok','ローカル保存データも削除しました');
+    line('nukeOut','in','アプリ本体を開き直してください。');
+  } catch(e){ line('nukeOut','ng','失敗: ' + e); }
 }
 </script>
-
 </body>
 </html>
