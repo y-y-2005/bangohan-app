@@ -691,8 +691,11 @@ function submitProxyStatus() {
 }
 
 /* --------------------------------------------------------------------------
-   週間ビュー (FR-08)
+   週間ビュー (FR-08) & 未来・過去日付の回答設定
    -------------------------------------------------------------------------- */
+let dateModalTargetDate = null;
+let dateModalTargetUserId = null;
+
 function renderWeekTab() {
   const table = document.getElementById('weekTable');
   table.innerHTML = '';
@@ -712,13 +715,85 @@ function renderWeekTab() {
     tr.innerHTML = `<td style="font-weight: 800; text-align: left;">${u.avatar} ${escapeHtml(u.name)}</td>`;
 
     for (let i = 0; i < 7; i++) {
-      const res = appState.responses[`${getTodayStr(i)}_${u.id}`];
+      const dateStr = getTodayStr(i);
+      const res = appState.responses[`${dateStr}_${u.id}`];
       const cfg = STATUS_CONFIG[res ? res.status : 'S-0'];
-      tr.innerHTML += `<td><div class="matrix-cell status-badge ${cfg.bgClass}">${cfg.icon} ${cfg.text}</div></td>`;
+      tr.innerHTML += `<td>
+        <div class="matrix-cell status-badge ${cfg.bgClass}" onclick="openDateModal('${dateStr}', '${u.id}')" title="タップして${getFormattedDisplayDate(i)}の予定を設定">
+          ${cfg.icon} ${cfg.text}
+        </div>
+      </td>`;
     }
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
+}
+
+function openDateModal(dateStr, userId) {
+  dateModalTargetDate = dateStr;
+  dateModalTargetUserId = userId;
+
+  const user = appState.users.find(u => u.id === userId);
+  if (!user) return;
+
+  const d = new Date(dateStr + 'T00:00:00');
+  const dateFormatted = `${d.getMonth() + 1}月${d.getDate()}日(${DAY_NAMES[d.getDay()]})`;
+
+  document.getElementById('dateModalTitle').textContent = `📅 ${dateFormatted} の回答`;
+  document.getElementById('dateModalMemberName').textContent = user.name;
+
+  const existing = appState.responses[`${dateStr}_${userId}`];
+  if (existing) {
+    document.getElementById('dateStatusSelect').value = existing.status || 'S-1';
+    document.getElementById('dateEtaInput').value = existing.eta_time || '20:00';
+    document.getElementById('dateNoteInput').value = existing.note || '';
+  } else {
+    document.getElementById('dateStatusSelect').value = 'S-1';
+    document.getElementById('dateNoteInput').value = '';
+  }
+
+  toggleDateExtra();
+  document.getElementById('dateModal').classList.add('active');
+}
+
+function closeDateModal() {
+  document.getElementById('dateModal').classList.remove('active');
+  dateModalTargetDate = null;
+  dateModalTargetUserId = null;
+}
+
+function toggleDateExtra() {
+  const status = document.getElementById('dateStatusSelect').value;
+  document.getElementById('dateEtaGroup').style.display = status === 'S-3' ? 'block' : 'none';
+}
+
+function submitDateStatus() {
+  if (!dateModalTargetDate || !dateModalTargetUserId) return;
+
+  const statusCode = document.getElementById('dateStatusSelect').value;
+  const targetUser = appState.users.find(u => u.id === dateModalTargetUserId);
+  const key = `${dateModalTargetDate}_${dateModalTargetUserId}`;
+
+  const isSelf = dateModalTargetUserId === appState.currentUserId;
+  const source = isSelf ? 'manual' : 'proxy';
+
+  appState.responses[key] = makeResponse(
+    statusCode,
+    statusCode === 'S-3' ? document.getElementById('dateEtaInput').value : '',
+    document.getElementById('dateNoteInput').value || '',
+    source
+  );
+
+  saveState();
+  closeDateModal();
+  renderWeekTab();
+  if (dateModalTargetDate === getTodayStr()) {
+    renderHomeTab();
+  }
+
+  const d = new Date(dateModalTargetDate + 'T00:00:00');
+  const dateFormatted = `${d.getMonth() + 1}/${d.getDate()}(${DAY_NAMES[d.getDay()]})`;
+  showToast(`🗓 ${dateFormatted} ${targetUser.name}さんの予定を「${STATUS_CONFIG[statusCode].label}」に設定しました`, 'info');
 }
 
 /* --------------------------------------------------------------------------

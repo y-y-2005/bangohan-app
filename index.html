@@ -367,6 +367,50 @@
       </div>
     </div>
 
+    <!-- Date Status Modal (For Future Dates in Week View) -->
+    <div id="dateModal" class="modal-overlay">
+      <div class="modal-card">
+        <h3 class="modal-title" id="dateModalTitle">日付別の回答</h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+          <span id="dateModalMemberName"></span> さんの夕食予定を設定
+        </p>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="dateStatusSelect">夕食ステータス</label>
+          <select id="dateStatusSelect" class="input-select" onchange="toggleDateExtra()">
+            <option value="S-1">🍚 食べる</option>
+            <option value="S-2">🙅‍♂️ 食べない</option>
+            <option value="S-3">🌙 遅れて食べる</option>
+            <option value="S-4">🍳 自分で用意する</option>
+          </select>
+        </div>
+
+        <div id="dateExtraOptions">
+          <div class="form-group" style="margin-bottom: 12px;" id="dateEtaGroup">
+            <label class="form-label" for="dateEtaInput">⏰ 帰宅予定時刻</label>
+            <select id="dateEtaInput" class="input-select">
+              <option value="19:00">19:00頃</option>
+              <option value="19:30">19:30頃</option>
+              <option value="20:00" selected>20:00頃</option>
+              <option value="20:30">20:30頃</option>
+              <option value="21:00">21:00頃</option>
+              <option value="21:30">21:30以降</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="dateNoteInput">💬 ひとことメモ (任意20文字)</label>
+            <input type="text" id="dateNoteInput" class="input-text" maxlength="20" placeholder="例: カレー希望、21時帰宅">
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeDateModal()">キャンセル</button>
+          <button class="btn btn-primary" onclick="submitDateStatus()">保存する</button>
+        </div>
+      </div>
+    </div>
+
     <!-- FR-05: Invite Code & QR Modal -->
     <div id="inviteModal" class="modal-overlay">
       <div class="modal-card" style="text-align: center;">
