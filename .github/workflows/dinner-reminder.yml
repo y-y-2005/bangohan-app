@@ -1,0 +1,33 @@
+name: Dinner Attendance Reminder & Summary
+
+on:
+  schedule:
+    # JST 15:00 (UTC 06:00) 周辺: リマインド用
+    - cron: '0,15,30,45 6 * * *'
+    # JST 17:00 (UTC 08:00) 周辺: 締切サマリ用
+    - cron: '0,15,30,45 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-reminder:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Reminder Script
+        env:
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          SENDER_NAME: ${{ secrets.SENDER_NAME }}
+          KVDB_BUCKET: ${{ secrets.KVDB_BUCKET }}
+          KVDB_KEY: ${{ secrets.KVDB_KEY }}
+          MEMBER_EMAILS: ${{ secrets.MEMBER_EMAILS }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: node scripts/reminder.mjs
