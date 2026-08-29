@@ -3,8 +3,8 @@
    ========================================================================== */
 
 // --- Cloud Sync API Configuration ---
-// Uses Firebase Realtime DB REST Endpoint for free, instant zero-config multi-device sync
-const SYNC_ENDPOINT = 'https://bangohan-app-default-rtdb.asia-southeast1.firebasedatabase.app/groups';
+// Uses dedicated KV Cloud Database REST Endpoint for instant, zero-config multi-device sync
+const SYNC_ENDPOINT = 'https://kvdb.io/AeVidZgwuAzpw3ipmY5xhR';
 
 const STATUS_CONFIG = {
   'S-0': { label: '未回答', icon: '❓', bgClass: 's0', text: '未回答' },
@@ -168,15 +168,15 @@ function startCloudSync() {
 }
 
 async function syncWithCloud() {
-  const code = (appState.group && appState.group.invite_code) ? appState.group.invite_code : 'BINGO-2026';
-  const url = `${SYNC_ENDPOINT}/${code}.json`;
+  const rawCode = (appState.group && appState.group.invite_code) ? appState.group.invite_code : 'BINGO-2026';
+  const code = rawCode.replace(/[^a-zA-Z0-9]/g, '');
+  const url = `${SYNC_ENDPOINT}/group_${code}`;
 
   try {
     const res = await fetch(url);
     if (res.ok) {
       const cloudData = await res.json();
       if (cloudData && cloudData.responses) {
-        // Merge cloud responses with local
         appState.responses = Object.assign({}, appState.responses, cloudData.responses);
         if (cloudData.users) appState.users = cloudData.users;
         if (cloudData.group) appState.group = Object.assign({}, appState.group, cloudData.group);
@@ -193,13 +193,13 @@ async function syncWithCloud() {
 }
 
 async function pushToCloud() {
-  const code = (appState.group && appState.group.invite_code) ? appState.group.invite_code : 'BINGO-2026';
-  const url = `${SYNC_ENDPOINT}/${code}.json`;
+  const rawCode = (appState.group && appState.group.invite_code) ? appState.group.invite_code : 'BINGO-2026';
+  const code = rawCode.replace(/[^a-zA-Z0-9]/g, '');
+  const url = `${SYNC_ENDPOINT}/group_${code}`;
 
   try {
-    await fetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch(url, {
+      method: 'POST',
       body: JSON.stringify({
         group: appState.group,
         users: appState.users,
@@ -208,7 +208,9 @@ async function pushToCloud() {
         updated_at: Date.now()
       })
     });
-    updateSyncBadge(true);
+    if (res.ok) {
+      updateSyncBadge(true);
+    }
   } catch (err) {
     updateSyncBadge(false);
   }
