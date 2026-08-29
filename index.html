@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ばんごはん、いる？ - 家族向け夕食要否共有アプリ</title>
+  <meta name="description" content="1タップで当日の夕食要否を家族と共有。リアルタイム自動同期、未回答者への自動リマインドや締切通知機能付き。">
+  <meta name="theme-color" content="#E05A47">
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Top Bar for Device Identity / Switcher & Sync Indicator -->
+    <div class="sim-bar">
+      <div class="sim-label">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+        </svg>
+        <span>あなたのカード:</span>
+      </div>
+      <div class="sim-select-wrapper">
+        <select id="currentUserSelect" class="sim-select" onchange="switchUser(this.value)">
+          <!-- Options dynamically rendered in JS -->
+        </select>
+        <span id="currentUserRole" class="role-badge">調理担当者</span>
+        <span id="syncStatusBadge" class="sync-badge">📡 リアルタイム同期中</span>
+      </div>
+    </div>
+
+    <!-- App Header -->
+    <header class="app-header">
+      <div class="header-top">
+        <div class="app-title">
+          <svg viewBox="0 0 24 24">
+            <path d="M8.1 13.34l2.83-2.83L3.91 3.5c-1.56 1.56-1.56 4.09 0 5.66l4.19 4.18zm6.78-1.81c1.53.71 3.68.21 5.27-1.38 1.91-1.91 2.28-4.65.81-6.12-1.46-1.46-4.2-1.1-6.12.81-1.59 1.59-2.09 3.74-1.38 5.27L3.7 19.87l1.41 1.41 9.77-9.75z"/>
+          </svg>
+          <span>ばんごはん、いる？</span>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" title="テーマ切替" aria-label="テーマ切替">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4C12.92 3.04 12.46 3 12 3z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="date-banner">
+        <div class="date-text" id="currentDateDisplay">
+          📅 --月--日(―)
+        </div>
+        <div class="deadline-pill" id="deadlineDisplay">
+          ⏰ 締切 --:--
+        </div>
+      </div>
+    </header>
+
+    <!-- Notification Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Main Dynamic Content Views -->
+    <main class="main-content">
+
+      <!-- UI-01: Home Tab Pane (Today's Status & Entry) -->
+      <section id="tab-home" class="tab-pane active">
+        
+        <!-- FR-02: Summary Header -->
+        <div class="summary-bar" id="todaySummaryBar">
+          <div class="summary-item eat">
+            <span class="summary-num" id="sumEat">0</span>
+            <span class="summary-label">食べる</span>
+          </div>
+          <div class="summary-item skip">
+            <span class="summary-num" id="sumSkip">0</span>
+            <span class="summary-label">食べない</span>
+          </div>
+          <div class="summary-item pending">
+            <span class="summary-num" id="sumPending">0</span>
+            <span class="summary-label">未回答</span>
+          </div>
+        </div>
+
+        <!-- FR-01: My Response Form -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">
+              <span>あなたの今日の回答</span>
+            </h2>
+            <span class="card-subtitle" id="myStatusSubtitle">ワンタップで登録</span>
+          </div>
+
+          <div class="status-grid">
+            <button class="status-btn" id="btn-s1" onclick="submitStatus('S-1')">
+              <span class="btn-icon">🍚</span>
+              <span class="btn-text">食べる</span>
+            </button>
+            <button class="status-btn" id="btn-s2" onclick="submitStatus('S-2')">
+              <span class="btn-icon">🙅‍♂️</span>
+              <span class="btn-text">食べない</span>
+            </button>
+            <button class="status-btn" id="btn-s3" onclick="submitStatus('S-3')">
+              <span class="btn-icon">🌙</span>
+              <span class="btn-text">遅れて食べる</span>
+            </button>
+            <button class="status-btn" id="btn-s4" onclick="submitStatus('S-4')">
+              <span class="btn-icon">🍳</span>
+              <span class="btn-text">自分で用意</span>
+            </button>
+          </div>
+
+          <!-- Extra details (ETA & Memo) -->
+          <div class="extra-options" id="extraOptions" style="display: none;">
+            <div class="form-group" id="etaGroup" style="display: none;">
+              <label class="form-label" for="etaInput">⏰ 帰宅予定時刻 (遅れて食べる場合)</label>
+              <select id="etaInput" class="input-select" onchange="saveExtraDetails()">
+                <option value="19:00">19:00頃</option>
+                <option value="19:30">19:30頃</option>
+                <option value="20:00" selected>20:00頃</option>
+                <option value="20:30">20:30頃</option>
+                <option value="21:00">21:00頃</option>
+                <option value="21:30">21:30以降</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label class="form-label" for="noteInput">💬 ひとことメモ (任意20文字)</label>
+              <input type="text" id="noteInput" class="input-text" maxlength="20" placeholder="例: カレー希望、21時頃帰宅" onchange="saveExtraDetails()">
+            </div>
+          </div>
+        </div>
+
+        <!-- FR-02 & FR-04: Family Member Cards List -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">
+              <span>👨‍👩‍👧‍👦 家族の状況</span>
+            </h2>
+            <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;" onclick="syncWithCloud()">
+              🔄 手動同期
+            </button>
+          </div>
+
+          <div class="member-list" id="memberListContainer">
+            <!-- Member cards injected via JS -->
+          </div>
+        </div>
+
+      </section>
+
+      <!-- UI-02: Weekly View Tab Pane (FR-08) -->
+      <section id="tab-week" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🗓 週間ビュー (7日間)</h2>
+            <span class="card-subtitle">全員の予定一覧</span>
+          </div>
+
+          <div class="week-table-container">
+            <table class="week-table" id="weekTable">
+              <!-- Dynamically populated in JS -->
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- UI-07: Day-of-Week Default Schedule Tab Pane (FR-09) -->
+      <section id="tab-default" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">⚙️ 曜日別デフォルト設定</h2>
+          </div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
+            毎週固定の予定（アルバイト、習い事等）に合わせて、当日の朝6時に自動で仮回答を反映します。手動でいつでも変更可能です。
+          </p>
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label class="form-label" for="defaultUserSelect">対象メンバー</label>
+            <select id="defaultUserSelect" class="input-select" onchange="renderDefaultTab()">
+              <!-- Options injected via JS -->
+            </select>
+          </div>
+
+          <div id="defaultScheduleRows">
+            <!-- Day rows injected via JS -->
+          </div>
+
+          <button class="btn btn-primary btn-block" style="margin-top: 16px;" onclick="saveDefaultSchedule()">
+            💾 デフォルト設定を保存
+          </button>
+        </div>
+      </section>
+
+      <!-- UI-05 & FR-05: Family & Member Management Pane -->
+      <section id="tab-family" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🏠 家族グループ管理</h2>
+          </div>
+          
+          <div style="background: var(--bg-surface); padding: 14px; border-radius: var(--radius-md); margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-size: 12px; color: var(--text-muted);">グループ名</div>
+                <div style="font-weight: 800; font-size: 18px;" id="groupNameDisplay">田中家</div>
+              </div>
+              <button class="btn btn-secondary" onclick="showInviteModal()">
+                🔗 招待コード / QR
+              </button>
+            </div>
+          </div>
+
+          <div class="card-header" style="margin-top: 10px;">
+            <h3 class="card-title" style="font-size: 14px;">メンバー一覧</h3>
+            <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;" onclick="showAddMemberModal()">
+              ➕ メンバー追加
+            </button>
+          </div>
+
+          <div class="member-list" id="familyMemberList">
+            <!-- Family members injected via JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- UI-06: Settings Pane -->
+      <section id="tab-settings" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">⚙️ グループ＆通知設定</h2>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label class="form-label" for="settingsGroupName">グループ名</label>
+            <input type="text" id="settingsGroupName" class="input-text" value="田中家">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label class="form-label" for="settingsDeadlineTime">⏰ 締切時刻 (調理準備開始目安)</label>
+            <input type="time" id="settingsDeadlineTime" class="input-text" value="17:00">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label class="form-label" for="settingsReminderTime">🔔 未回答リマインド時刻</label>
+            <input type="time" id="settingsReminderTime" class="input-text" value="15:00">
+          </div>
+
+          <button class="btn btn-primary btn-block" onclick="saveGroupSettings()">
+            💾 設定を保存
+          </button>
+        </div>
+
+        <!-- Simulation Actions Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🧪 開発・テスト用シミュレーター</h3>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+            プッシュ通知や定時バッチ処理の挙動を即時確認できます。
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="btn btn-secondary" onclick="triggerReminderNotification()">
+              🔔 15:00 リマインド通知テスト
+            </button>
+            <button class="btn btn-secondary" onclick="triggerDeadlineSummaryNotification()">
+              ⏰ 17:00 締切サマリ通知テスト
+            </button>
+            <button class="btn btn-secondary" onclick="resetToSampleData()">
+              🔄 デモ初期データにリセット
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- UI-08: History Pane (FR-14) -->
+      <section id="tab-history" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">📜 過去の回答履歴</h2>
+          </div>
+          <div id="historyContainer">
+            <!-- Injected via JS -->
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" onclick="switchTab('home')" id="nav-home">
+        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        <span>ホーム</span>
+      </button>
+      <button class="nav-item" onclick="switchTab('week')" id="nav-week">
+        <svg viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"/></svg>
+        <span>週間</span>
+      </button>
+      <button class="nav-item" onclick="switchTab('default')" id="nav-default">
+        <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+        <span>デフォルト</span>
+      </button>
+      <button class="nav-item" onclick="switchTab('family')" id="nav-family">
+        <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+        <span>家族</span>
+      </button>
+      <button class="nav-item" onclick="switchTab('settings')" id="nav-settings">
+        <svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>
+        <span>設定</span>
+      </button>
+    </nav>
+
+    <!-- FR-11: Proxy Input Modal (代理入力) -->
+    <div id="proxyModal" class="modal-overlay">
+      <div class="modal-card">
+        <h3 class="modal-title" id="proxyModalTitle">代理入力</h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+          <span id="proxyMemberName"></span> さんの回答を代理登録します。
+        </p>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="proxyStatusSelect">夕食ステータス</label>
+          <select id="proxyStatusSelect" class="input-select" onchange="toggleProxyExtra()">
+            <option value="S-1">🍚 食べる</option>
+            <option value="S-2">🙅‍♂️ 食べない</option>
+            <option value="S-3">🌙 遅れて食べる</option>
+            <option value="S-4">🍳 自分で用意する</option>
+          </select>
+        </div>
+
+        <div id="proxyExtraOptions">
+          <div class="form-group" style="margin-bottom: 12px;" id="proxyEtaGroup">
+            <label class="form-label" for="proxyEtaInput">⏰ 帰宅予定時刻</label>
+            <select id="proxyEtaInput" class="input-select">
+              <option value="19:00">19:00頃</option>
+              <option value="19:30">19:30頃</option>
+              <option value="20:00" selected>20:00頃</option>
+              <option value="20:30">20:30頃</option>
+              <option value="21:00">21:00頃</option>
+              <option value="21:30">21:30以降</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="proxyNoteInput">💬 メモ</label>
+            <input type="text" id="proxyNoteInput" class="input-text" maxlength="20" placeholder="代理登録の理由等">
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeProxyModal()">キャンセル</button>
+          <button class="btn btn-primary" onclick="submitProxyStatus()">保存する</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FR-05: Invite Code & QR Modal -->
+    <div id="inviteModal" class="modal-overlay">
+      <div class="modal-card" style="text-align: center;">
+        <h3 class="modal-title">👨‍👩‍👧 家族を招待</h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+          以下のURLまたはQRコードを家族にLINEやメッセージで送信してください。同じグループデータが自動同期されます。
+        </p>
+
+        <div style="background: var(--bg-surface); padding: 12px; border-radius: var(--radius-md); margin-bottom: 16px;">
+          <div style="font-size: 11px; color: var(--text-muted);">招待コード</div>
+          <div style="font-size: 24px; font-weight: 900; letter-spacing: 2px; color: var(--primary);" id="inviteCodeText">BINGO-2026</div>
+        </div>
+
+        <!-- Simulated QR Code SVG -->
+        <div style="background: white; padding: 16px; display: inline-block; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
+          <svg width="140" height="140" viewBox="0 0 100 100" fill="#2D2725">
+            <rect x="10" y="10" width="25" height="25" fill="#2D2725"/>
+            <rect x="15" y="15" width="15" height="15" fill="white"/>
+            <rect x="18" y="18" width="9" height="9" fill="#2D2725"/>
+            
+            <rect x="65" y="10" width="25" height="25" fill="#2D2725"/>
+            <rect x="70" y="15" width="15" height="15" fill="white"/>
+            <rect x="73" y="18" width="9" height="9" fill="#2D2725"/>
+            
+            <rect x="10" y="65" width="25" height="25" fill="#2D2725"/>
+            <rect x="15" y="70" width="15" height="15" fill="white"/>
+            <rect x="18" y="73" width="9" height="9" fill="#2D2725"/>
+
+            <rect x="42" y="15" width="8" height="8"/>
+            <rect x="42" y="30" width="8" height="18"/>
+            <rect x="15" y="42" width="18" height="8"/>
+            <rect x="55" y="55" width="12" height="12"/>
+            <rect x="75" y="65" width="15" height="8"/>
+            <rect x="65" y="78" width="10" height="12"/>
+          </svg>
+        </div>
+
+        <div class="modal-actions" style="justify-content: center;">
+          <button class="btn btn-secondary" onclick="copyInviteLink()">📋 WebアプリURLをコピー</button>
+          <button class="btn btn-primary" onclick="closeInviteModal()">閉じる</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Member Modal -->
+    <div id="addMemberModal" class="modal-overlay">
+      <div class="modal-card">
+        <h3 class="modal-title">➕ 家族メンバーを追加</h3>
+        
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="newMemberName">表示名 (ニックネーム)</label>
+          <input type="text" id="newMemberName" class="input-text" placeholder="例: 祖母, 弟">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="newMemberAvatar">アイコン絵文字</label>
+          <select id="newMemberAvatar" class="input-select">
+            <option value="👵">👵 祖母</option>
+            <option value="👴">👴 祖父</option>
+            <option value="👦">👦 弟</option>
+            <option value="👧">👧 妹</option>
+            <option value="👨">👨 父</option>
+            <option value="👩">👩 母</option>
+          </select>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeAddMemberModal()">キャンセル</button>
+          <button class="btn btn-primary" onclick="addNewMember()">追加する</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Main Application Script -->
+  <script src="app.js"></script>
+
+  <!-- PWA Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration error:', err));
+      });
+    }
+  </script>
+</body>
+</html>
